@@ -11,7 +11,6 @@ import platform
 import datetime
 from datetime import time
 import thulac
-import operator
 import optparse
 import collections
 
