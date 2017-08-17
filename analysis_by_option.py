@@ -18,6 +18,7 @@ import collections
 class FileAnalyzer:
     def __init__(self):
         self.thu1 = thulac.thulac(filt=True)
+        self.printFilename = True
 
     def creation_date(self, path_to_file):
 
@@ -84,7 +85,8 @@ class FileAnalyzer:
         filename = os.path.basename(filepath)
 
         if filename.endswith(".xls") or filename.endswith(".xlsx"):
-            print("檔案名稱:", filename)
+            if self.printFilename:
+                print("檔案名稱:", filename)
             # thu1 = thulac.thulac(filt=True)
 
             if filename.endswith(".xls"):
@@ -193,7 +195,7 @@ class FileAnalyzer:
                         freq_result = self.count_frequency(text_cut)
 
                         all_sheets.append((sheet_names[i], freq_result))
-
+        
         return all_sheets  # [(2 items tuple)]
 
 
@@ -329,6 +331,10 @@ class FileAnalyzer:
                 self.print_out_result(self.read_single_file(src))
 
 
+
+    
+
+
 def main():
 
     analyzer = FileAnalyzer()
@@ -352,11 +358,11 @@ def main():
                       dest="list_all",
                       help="列出所有excel及sheet名")
 
-    # parser.add_option("-c", "--combinedFiles",
-    #                   action="store_true",
-    #                   default=False,
-    #                   dest="combined_Files",
-    #                   help="綜合分析指定excel檔")
+    parser.add_option("-c", "--combinedFiles",
+                      action="store_true",
+                      default=False,
+                      dest="combined_Files",
+                      help="綜合分析指定excel檔")
 
 
     (options, args) = parser.parse_args()
@@ -382,8 +388,46 @@ def main():
                analyzer.go_through_directory(args[i])
                 
 
-    # elif options.combined_Files:
-    #     print("sorry, this function is under construction, please wait")
+    elif options.combined_Files:
+        analyzer.printFilename = False
+        all_data = dict()
+        for i in range(len(args)):
+            single_file_data = analyzer.read_single_file(args[i])
+            # print(single_file_data)
+            
+            for ele in single_file_data:
+                sn = ele[0]
+                tokens_in_sheet = ""  # sheet為單位
+                for theKey in ele[1].keys():
+                    loopTime = int(theKey)
+                    wannaStr = ""
+                    for ti in range(loopTime):
+                        wannaStr = ",".join([wannaStr, ele[1][theKey]])
+                    wannaStr = wannaStr.lstrip(",").strip() #分次字數統計
+                    
+                    tokens_in_sheet = ",".join([tokens_in_sheet, wannaStr])
+                tokens_in_sheet = tokens_in_sheet.lstrip(",").strip()
+                    
+                # print(sn, ":", tokens_in_sheet)
+                
+                if sn not in all_data:
+                    all_data[sn] = tokens_in_sheet
+                else:
+                    ori_sn_data = all_data[sn]
+                    all_data[sn] = ",".join([ori_sn_data, tokens_in_sheet])
+
+        for k, v in all_data.items():
+            cleanV = v.replace(","," ")
+            count_result = analyzer.count_frequency(cleanV)
+            print(k)
+            # print(count_result)
+
+            od = collections.OrderedDict(sorted(count_result.items()))
+            print("字頻統計: ")
+            for od_k, od_v in od.items():
+                print(str(od_k) + "次: " + od_v)
+            print("-----------------------------------------------------")
+
 
     
     elif options.list_all:
