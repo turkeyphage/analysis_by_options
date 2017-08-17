@@ -58,25 +58,31 @@ def count_frequency(full_text):
     return feq_combined
 
 
-def print_out_result(sheet_name, freq_result):
+#列印結果
+def print_out_result(allsheets):
     
-    od = collections.OrderedDict(sorted(freq_result.items()))
-    print("sheet_name: " + sheet_name)
-    print("字頻統計: ")
+    for i in range(len(allsheets)):
+        sheet_name = allsheets[i][0]
+        od = collections.OrderedDict(sorted(allsheets[i][1].items()))
+        print("sheet_name: " + sheet_name)
+        print("字頻統計: ")
+        for k, v in od.items():
+            print(str(k) + "次: " + v)
+        print("-----------------------------------------------------")
 
-    for k, v in od.items():
-        print(str(k) + "次: " + v)
 
-    print("-----------------------------------")
+
+
+
+
 
 
 
 
 #單一檔案讀取
 def read_single_file(filepath):
-    fileDic = dict()
+    all_sheets = []
     # thu1 = thulac.thulac(seg_only=True, filt=True)
-    # # thu1 = thulac.thulac(seg_only=True)
     
     filename = os.path.basename(filepath)
 
@@ -144,14 +150,13 @@ def read_single_file(filepath):
                             filted_str = " ".join([filted_str, ele[0]])
                     text_cut = filted_str.strip()
                     freq_result = count_frequency(text_cut)
-
-                    print_out_result(sheet_names[i], freq_result)
+                    
+                    all_sheets.append((sheet_names[i], freq_result))
 
 
         else:
             # 使用openpyxl
             filename_without_extension = filename.replace(".xlsx", "").strip()
-            # fileDic[filename_without_extension] = []
 
             excelFile = pyxl.load_workbook(filepath)
             #所有sheet的名字
@@ -190,12 +195,132 @@ def read_single_file(filepath):
                     text_cut = filted_str.strip()
                     freq_result = count_frequency(text_cut)
 
-                    print_out_result(sheet_names[i], freq_result)
+                    all_sheets.append((sheet_names[i], freq_result))
 
-        # else:
-        #     # 非excel檔
-        #     return
+    return all_sheets  # [(2 items tuple)]
 
+
+def list_all(dir_path):
+
+    def print_all_files_sheets(all_files_sheets):
+         #print out all:
+        for k in all_files_sheets.keys():
+            print("檔名:", k)
+            print("Sheet名稱:")
+            for i in range(len(all_files_sheets[k])):
+                print("\t", all_files_sheets[k][i])
+            print("-----------------------------------------------------")
+
+
+    all_files_sheets = dict()
+
+    curr_path = os.getcwd()
+
+    if os.path.isdir(dir_path):
+        os.chdir(dir_path)
+        # print(os.getcwd())
+        for roots, dirs, files in os.walk(os.getcwd()):
+            for filename in files: 
+                #filename:檔案名稱
+                src = os.path.join(roots, filename)
+                if filename.endswith(".xls") or filename.endswith(".xlsx"):
+                    if filename not in all_files_sheets:
+                        all_files_sheets[filename] = list()
+
+                    if filename.endswith(".xls"):
+                        # 使用xlrd
+                        excelFile = xl.open_workbook(src)
+                        # 所有sheet的名字
+                        sheet_names = excelFile.sheet_names()
+                        not_empty_sheet_names = []
+                        # sheet iteration
+                        for i in range(len(sheet_names)):
+                            # sheet
+                            work_sheet = excelFile.sheet_by_index(i)
+                            # 以row數來判斷sheet是否為Empty
+                            if work_sheet.nrows != 0:
+                                sheet_name = sheet_names[i].strip()
+                                not_empty_sheet_names.append(sheet_name)
+                                
+                        all_files_sheets[filename] = not_empty_sheet_names
+
+                    else:
+                        # 使用openpyxl
+                        filename_without_extension = filename.replace(".xlsx", "").strip()
+                        excelFile = pyxl.load_workbook(src)
+                        #所有sheet的名字
+                        sheet_names = excelFile.get_sheet_names()
+                        not_empty_sheet_names = []
+
+                        #sheet iteration
+                        for i in range(len(sheet_names)):
+                            #sheet
+                            work_sheet = excelFile.get_sheet_by_name(sheet_names[i])
+
+                            num_rows = work_sheet.max_row
+                            num_columns = work_sheet.max_column
+
+                            if num_columns != 1 and num_rows != 1:
+                                # not empty
+                                sheet_name = sheet_names[i].strip()
+                                not_empty_sheet_names.append(sheet_name)
+                                
+                        all_files_sheets[filename] = not_empty_sheet_names
+        
+        print_all_files_sheets(all_files_sheets)
+    
+    elif os.path.isfile(dir_path):
+        filename = dir_path
+        src = os.path.abspath(filename)
+        if filename.endswith(".xls") or filename.endswith(".xlsx"):
+            if filename not in all_files_sheets:
+                all_files_sheets[filename] = list()
+
+            if filename.endswith(".xls"):
+                # 使用xlrd
+                excelFile = xl.open_workbook(src)
+                # 所有sheet的名字
+                sheet_names = excelFile.sheet_names()
+                not_empty_sheet_names = []
+                # sheet iteration
+                for i in range(len(sheet_names)):
+                    # sheet
+                    work_sheet = excelFile.sheet_by_index(i)
+                    # 以row數來判斷sheet是否為Empty
+                    if work_sheet.nrows != 0:
+                        sheet_name = sheet_names[i].strip()
+                        not_empty_sheet_names.append(sheet_name)
+
+                all_files_sheets[filename] = not_empty_sheet_names
+
+            else:
+                # 使用openpyxl
+                filename_without_extension = filename.replace(".xlsx", "").strip()
+                excelFile = pyxl.load_workbook(src)
+                #所有sheet的名字
+                sheet_names = excelFile.get_sheet_names()
+                not_empty_sheet_names = []
+
+                #sheet iteration
+                for i in range(len(sheet_names)):
+                    #sheet
+                    work_sheet = excelFile.get_sheet_by_name(sheet_names[i])
+
+                    num_rows = work_sheet.max_row
+                    num_columns = work_sheet.max_column
+
+                    if num_columns != 1 and num_rows != 1:
+                        # not empty
+                        sheet_name = sheet_names[i].strip()
+                        not_empty_sheet_names.append(sheet_name)
+
+                all_files_sheets[filename] = not_empty_sheet_names
+    
+        print_all_files_sheets(all_files_sheets)
+    else:
+        print("sorry, " + str(dir_path) + " not a directory path")
+
+    os.chdir(curr_path)
 
 def go_through_directory(dir_path):
     os.chdir(dir_path)
@@ -204,8 +329,7 @@ def go_through_directory(dir_path):
         for filename in files:
             src = os.path.join(roots, filename)
             # print(src)
-            read_single_file(src)
-
+            print_out_result(read_single_file(src))
 
 
 
@@ -224,6 +348,11 @@ def main():
                       default=False,
                       dest="all_in_directory",
                       help="分析資料夾裡所有excel檔")
+    parser.add_option("-l", "--list",
+                      action="store_true",
+                      default=False,
+                      dest="list_all",
+                      help="列出所有excel及sheet名")
 
     # parser.add_option("-c", "--combinedFiles",
     #                   action="store_true",
@@ -234,39 +363,42 @@ def main():
 
     (options, args) = parser.parse_args()
 
-    if len(args) < 1:
-        print("not enough args")
-        parser.print_help()    
-        return -1
+    
+        
+    if options.single_file:
+        if len(args) < 1:
+            print("not enough args")
+            parser.print_help()
+            return -1
+        else:
+            for i in range(len(args)):
+                print_out_result(read_single_file(args[i]))
+                
+    elif options.all_in_directory:
+        if len(args) < 1:
+            print("not enough args")
+            parser.print_help()
+            return -1
+        else:
+            for i in range(len(args)):
+                go_through_directory(args[i])
+                
 
+    # elif options.combined_Files:
+    #     print("sorry, this function is under construction, please wait")
+
+    
+    elif options.list_all:
+        if len(args) < 1:
+            print("not enough args")
+            parser.print_help()
+            return -1
+        else:
+            for i in range(len(args)):
+                list_all(args[i])
 
     else:
-        
-        if options.single_file:
-            for i in range(len(args)):
-                read_single_file(args[i])
-        
-                
-        elif options.all_in_directory:
-            for i in range(len(args)):
-                # print(args[i])
-                go_through_directory(args[i])
-            
-
-        # elif options.combined_Files:
-        #     print("sorry, this function is under construction, please wait")
-
-                
-        else:
-            parser.print_help()
-
-
-
-
-
-
-
-
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
