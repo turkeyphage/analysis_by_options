@@ -58,13 +58,8 @@ def count_frequency(full_text):
     return feq_combined
 
 
-def print_out_result(sheet_name, text_cut):
-    filted_str = ""
-    for ele in text_cut:
-        if ele[-1] != 'u' and ele[-1] != 'y' and ele[-1] != 'r':
-            filted_str = " ".join([filted_str, ele[0]])
-    text_cut = filted_str.strip()
-    freq_result = count_frequency(text_cut)
+def print_out_result(sheet_name, freq_result):
+    
     od = collections.OrderedDict(sorted(freq_result.items()))
     print("sheet_name: " + sheet_name)
     print("字頻統計: ")
@@ -72,8 +67,6 @@ def print_out_result(sheet_name, text_cut):
     for k, v in od.items():
         print(str(k) + "次: " + v)
 
-    # for ele in freq_result.keys():
-    #     print(str(ele)+"次: "+freq_result[ele])
     print("-----------------------------------")
 
 
@@ -84,113 +77,133 @@ def read_single_file(filepath):
     fileDic = dict()
     # thu1 = thulac.thulac(seg_only=True, filt=True)
     # # thu1 = thulac.thulac(seg_only=True)
-    thu1 = thulac.thulac(filt=True)
+    
     filename = os.path.basename(filepath)
 
-    if filename.endswith(".xls"):
-        # 使用xlrd
+    if filename.endswith(".xls") or filename.endswith(".xlsx"):
+        print("檔案名稱:", filename)
+        thu1 = thulac.thulac(filt=True)
 
-        filename_without_extension = filename.replace(".xls", "").strip()
-        # fileDic[filename_without_extension] = []
+        if filename.endswith(".xls"):
+            # 使用xlrd
+            
+            filename_without_extension = filename.replace(".xls", "").strip()
+            # fileDic[filename_without_extension] = []
 
-        excelFile = xl.open_workbook(filepath)
-        # 所有sheet的名字
-        sheet_names = excelFile.sheet_names()
+            excelFile = xl.open_workbook(filepath)
+            # 所有sheet的名字
+            sheet_names = excelFile.sheet_names()
 
-        # sheet iteration
-        for i in range(len(sheet_names)):
-            # sheet
-            work_sheet = excelFile.sheet_by_index(i)
+            # sheet iteration
+            for i in range(len(sheet_names)):
+                # sheet
+                work_sheet = excelFile.sheet_by_index(i)
 
-            # 以row數來判斷sheet是否為Empty
-            if work_sheet.nrows != 0:
-                # print("%s - %s: %d rows" %(filename, sheet_names[i], work_sheet.nrows))
-                # file_create_date = creation_date(src)
-                sheet_fn = sheet_names[i].strip()
+                # 以row數來判斷sheet是否為Empty
+                if work_sheet.nrows != 0:
+                    # print("%s - %s: %d rows" %(filename, sheet_names[i], work_sheet.nrows))
+                    # file_create_date = creation_date(src)
+                    sheet_fn = sheet_names[i].strip()
 
-                sheet_contents = ""
-                num_rows = work_sheet.nrows - 1
-                num_cells = work_sheet.ncols - 1
-                curr_row = -1
+                    sheet_contents = ""
+                    num_rows = work_sheet.nrows - 1
+                    num_cells = work_sheet.ncols - 1
+                    curr_row = -1
 
-                while curr_row < num_rows:
-                    curr_row += 1
-                    # row = work_sheet.row(curr_row)
-                    curr_cell = -1
+                    while curr_row < num_rows:
+                        curr_row += 1
+                        # row = work_sheet.row(curr_row)
+                        curr_cell = -1
 
-                    while curr_cell < num_cells:
-                        curr_cell += 1
-                        # Cell Types: 0=Empty, 1=Text, 2=Number, 3=Date, 4=Boolean, 5=Error, 6=Blank
-                        cell_type = work_sheet.cell_type(curr_row, curr_cell)
-                        cell_value = work_sheet.cell_value(curr_row, curr_cell)
+                        while curr_cell < num_cells:
+                            curr_cell += 1
+                            # Cell Types: 0=Empty, 1=Text, 2=Number, 3=Date, 4=Boolean, 5=Error, 6=Blank
+                            cell_type = work_sheet.cell_type(curr_row, curr_cell)
+                            cell_value = work_sheet.cell_value(curr_row, curr_cell)
 
-                        try:
-                            if cell_type == 3:
-                                cell_value = int(cell_value * 24 * 3600)
-                                cell_value = time(cell_value // 3600, (cell_value % 3600) // 60, cell_value % 60)
-                        except:
-                            cell_value = ""
+                            try:
+                                if cell_type == 3:
+                                    cell_value = int(cell_value * 24 * 3600)
+                                    cell_value = time(cell_value // 3600, (cell_value % 3600) // 60, cell_value % 60)
+                            except:
+                                cell_value = ""
 
-                        if cell_type != 0 and cell_type != 6 and cell_type != 5:
+                            if cell_type != 0 and cell_type != 6 and cell_type != 5:
+                                cell_value = re.sub("[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value))
+                                sheet_contents = " ".join(
+                                    [sheet_contents, str(cell_value)]).strip()
+
+                    # text_cut = thu1.cut(sheet_contents, text=True).strip()
+
+                    text_cut = thu1.cut(sheet_contents) #[(tuple)]
+
+
+                    filted_str = ""
+                    for ele in text_cut:
+                        if ele[-1] != 'u' and ele[-1] != 'y' and ele[-1] != 'r':
+                            filted_str = " ".join([filted_str, ele[0]])
+                    text_cut = filted_str.strip()
+                    freq_result = count_frequency(text_cut)
+
+                    print_out_result(sheet_names[i], freq_result)
+
+
+        else:
+            # 使用openpyxl
+            filename_without_extension = filename.replace(".xlsx", "").strip()
+            # fileDic[filename_without_extension] = []
+
+            excelFile = pyxl.load_workbook(filepath)
+            #所有sheet的名字
+            sheet_names = excelFile.get_sheet_names()
+
+            #sheet iteration
+            for i in range(len(sheet_names)):
+                #sheet
+                work_sheet = excelFile.get_sheet_by_name(sheet_names[i])
+
+                num_rows = work_sheet.max_row
+                num_columns = work_sheet.max_column
+
+                if num_columns != 1 and num_rows != 1:
+                    # not empty
+                    sheet_contents = ""
+
+                    for curr_row in range(1, num_rows + 1):
+                        for curr_cell in range(1, num_columns + 1):
+                            cell_value = work_sheet.cell(
+                                row=curr_row, column=curr_cell).value
+                            if cell_value == None:
+                                cell_value = ""
+
                             cell_value = re.sub("[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value))
                             sheet_contents = " ".join(
                                 [sheet_contents, str(cell_value)]).strip()
 
-                # text_cut = thu1.cut(sheet_contents, text=True).strip()
+                    
+                    # text_cut = thu1.cut(sheet_contents, text=True).strip()
+                    text_cut = thu1.cut(sheet_contents)
+                    filted_str = ""
+                    for ele in text_cut:
+                        if ele[-1] != 'u' and ele[-1] != 'y' and ele[-1] != 'r':
+                            filted_str = " ".join([filted_str, ele[0]])
+                    text_cut = filted_str.strip()
+                    freq_result = count_frequency(text_cut)
 
-                text_cut = thu1.cut(sheet_contents)
-                print_out_result(sheet_names[i], text_cut)
+                    print_out_result(sheet_names[i], freq_result)
 
-
-    elif filename.endswith(".xlsx"):
-        # 使用openpyxl
-
-        filename_without_extension = filename.replace(".xlsx", "").strip()
-        # fileDic[filename_without_extension] = []
-
-        excelFile = pyxl.load_workbook(filepath)
-        #所有sheet的名字
-        sheet_names = excelFile.get_sheet_names()
-
-        #sheet iteration
-        for i in range(len(sheet_names)):
-            #sheet
-            work_sheet = excelFile.get_sheet_by_name(sheet_names[i])
-
-            num_rows = work_sheet.max_row
-            num_columns = work_sheet.max_column
-
-            if num_columns != 1 and num_rows != 1:
-                # not empty
-                sheet_contents = ""
-
-                for curr_row in range(1, num_rows + 1):
-                    for curr_cell in range(1, num_columns + 1):
-                        cell_value = work_sheet.cell(
-                            row=curr_row, column=curr_cell).value
-                        if cell_value == None:
-                            cell_value = ""
-
-                        cell_value = re.sub("[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value))
-                        sheet_contents = " ".join(
-                            [sheet_contents, str(cell_value)]).strip()
-
-                
-                # text_cut = thu1.cut(sheet_contents, text=True).strip()
-                text_cut = thu1.cut(sheet_contents)
-                print_out_result(sheet_names[i], text_cut)
-
-    else:
-        # 非excel檔
-        return
+        # else:
+        #     # 非excel檔
+        #     return
 
 
 def go_through_directory(dir_path):
     os.chdir(dir_path)
-    print(os.getcwd())
+    # print(os.getcwd())
     for roots, dirs, files in os.walk(os.getcwd()):
         for filename in files:
             src = os.path.join(roots, filename)
+            # print(src)
             read_single_file(src)
 
 
@@ -212,11 +225,11 @@ def main():
                       dest="all_in_directory",
                       help="分析資料夾裡所有excel檔")
 
-    parser.add_option("-c", "--combinedFiles",
-                      action="store_true",
-                      default=False,
-                      dest="combined_Files",
-                      help="綜合分析指定excel檔")
+    # parser.add_option("-c", "--combinedFiles",
+    #                   action="store_true",
+    #                   default=False,
+    #                   dest="combined_Files",
+    #                   help="綜合分析指定excel檔")
 
 
     (options, args) = parser.parse_args()
@@ -236,10 +249,12 @@ def main():
                 
         elif options.all_in_directory:
             for i in range(len(args)):
+                # print(args[i])
                 go_through_directory(args[i])
+            
 
-        elif options.combined_Files:
-            print("sorry, this function is under construction, please wait")
+        # elif options.combined_Files:
+        #     print("sorry, this function is under construction, please wait")
 
                 
         else:
