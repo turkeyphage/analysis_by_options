@@ -13,7 +13,7 @@ from datetime import time
 import thulac
 import optparse
 import collections
-
+from sqlite_manager import SQLiteManager
 
 class FileAnalyzer:
     def __init__(self):
@@ -338,6 +338,9 @@ class FileAnalyzer:
 def main():
 
     analyzer = FileAnalyzer()
+    sqlitemanager = SQLiteManager()
+
+
     parser = optparse.OptionParser(usage = "%prog [options] [file_name or folder_name]\n")
 
     parser.add_option("-f", "--file",
@@ -442,5 +445,6 @@ def main():
     else:
         parser.print_help()
 
+        
 if __name__ == "__main__":
     main()
