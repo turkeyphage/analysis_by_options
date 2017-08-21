@@ -19,7 +19,17 @@ class FileAnalyzer:
     def __init__(self):
         self.thu1 = thulac.thulac(filt=True)
         self.printFilename = True
+        self.sqlMa = SQLiteManager()
+        self.name_lexical = []
+        for ele in self.sqlMa.execute("SELECT * FROM lexical WHERE word_type = 1;"):
+            for ele_in_tuple in ele:
+                self.name_lexical.append(ele_in_tuple[-1])
 
+        # print(self.name_lexical)
+
+
+        # self.sqlMa.execute("SELECT * FROM lexical;")
+      
     def creation_date(self, path_to_file):
 
         if platform.system() == 'Windows':
@@ -69,10 +79,12 @@ class FileAnalyzer:
         for i in range(len(allsheets)):
             sheet_name = allsheets[i][0]
             od = collections.OrderedDict(sorted(allsheets[i][1].items()))
-            print("sheet_name: " + sheet_name)
+            # print("sheet_name: " + sheet_name)
+            print("<" + sheet_name + ">")
             print("字頻統計: ")
             for k, v in od.items():
-                print(str(k) + "次: " + v)
+                if k > 5:
+                    print(str(k) + "次: " + v)
             print("-----------------------------------------------------")
 
 
@@ -183,8 +195,7 @@ class FileAnalyzer:
                                 cell_value = re.sub("[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value))
                                 sheet_contents = " ".join(
                                     [sheet_contents, str(cell_value)]).strip()
-
-                        
+                                
                         # text_cut = thu1.cut(sheet_contents, text=True).strip()
                         text_cut = self.thu1.cut(sheet_contents)
                         filted_str = ""
@@ -195,8 +206,185 @@ class FileAnalyzer:
                         freq_result = self.count_frequency(text_cut)
 
                         all_sheets.append((sheet_names[i], freq_result))
-        
+
         return all_sheets  # [(2 items tuple)]
+
+
+
+
+
+
+    def read_file_row_by_row(self, filepath):
+        all_sheets = []
+
+        sep_by_name_lexical = dict()
+
+        filename = os.path.basename(filepath)
+
+        if filename.endswith(".xls") or filename.endswith(".xlsx"):
+            if self.printFilename:
+                print("檔案名稱:", filename)
+
+            if filename.endswith(".xls"):
+                # 使用xlrd
+
+                filename_without_extension = filename.replace(
+                    ".xls", "").strip()
+                # fileDic[filename_without_extension] = []
+
+                excelFile = xl.open_workbook(filepath)
+                # 所有sheet的名字
+                sheet_names = excelFile.sheet_names()
+
+                # sheet iteration
+                for i in range(len(sheet_names)):
+                    # sheet
+                    work_sheet = excelFile.sheet_by_index(i)
+
+                    # 以row數來判斷sheet是否為Empty
+                    if work_sheet.nrows != 0:
+                        # print("%s - %s: %d rows" %(filename, sheet_names[i], work_sheet.nrows))
+                        # file_create_date = creation_date(src)
+                        sheet_fn = sheet_names[i].strip()
+
+                        sheet_contents = ""
+                        num_rows = work_sheet.nrows - 1
+                        num_cells = work_sheet.ncols - 1
+                        curr_row = -1
+
+                        while curr_row < num_rows:
+                            curr_row += 1
+                            # row = work_sheet.row(curr_row)
+                            curr_cell = -1
+
+
+                            content_in_row = []
+                            while curr_cell < num_cells:
+                                curr_cell += 1
+                                # Cell Types: 0=Empty, 1=Text, 2=Number, 3=Date, 4=Boolean, 5=Error, 6=Blank
+                                cell_type = work_sheet.cell_type(
+                                    curr_row, curr_cell)
+                                cell_value = work_sheet.cell_value(
+                                    curr_row, curr_cell)
+
+                                try:
+                                    if cell_type == 3:
+                                        cell_value = int(
+                                            cell_value * 24 * 3600)
+                                        cell_value = time(
+                                            cell_value // 3600, (cell_value % 3600) // 60, cell_value % 60)
+                                except:
+                                    cell_value = ""
+
+                                if cell_type != 0 and cell_type != 6 and cell_type != 5:
+                                    cell_value = re.sub(
+                                        "[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value))
+                                    sheet_contents = " ".join(
+                                        [sheet_contents, str(cell_value)]).strip()
+                                    
+                                    content_in_row.append(cell_value)
+                            
+                            content_in_row = [x for x in content_in_row if x != '']
+                            content_in_string = ' '.join(content_in_row).strip()
+
+                            gotcha = False
+                            for name in self.name_lexical:
+
+                                if name in content_in_string:
+                                    if name not in sep_by_name_lexical:
+                                        sep_by_name_lexical[name] = ''
+
+                                    remainStr = content_in_string.replace(name, '')
+                                    if len(remainStr) > 1:
+                                        sep_by_name_lexical[name] = ' '.join([sep_by_name_lexical[name], remainStr]).strip()
+                                        gotcha = True
+
+                            if not gotcha:
+                                if 'unknown' not in sep_by_name_lexical:
+                                    sep_by_name_lexical['unknown'] = ''
+                                if len(content_in_string)>1:
+                                    sep_by_name_lexical['unknown'] = ' '.join([sep_by_name_lexical['unknown'], content_in_string]).strip()
+
+            else:
+                # 使用openpyxl
+                filename_without_extension = filename.replace(".xlsx", "").strip()
+
+                excelFile = pyxl.load_workbook(filepath)
+                #所有sheet的名字
+                sheet_names = excelFile.get_sheet_names()
+
+                #sheet iteration
+                for i in range(len(sheet_names)):
+                    #sheet
+                    work_sheet = excelFile.get_sheet_by_name(sheet_names[i])
+
+                    num_rows = work_sheet.max_row
+                    num_columns = work_sheet.max_column
+
+                    if num_columns != 1 and num_rows != 1:
+                        # not empty
+                        sheet_contents = ""
+
+                        for curr_row in range(1, num_rows + 1):
+                            content_in_row = []
+                            for curr_cell in range(1, num_columns + 1):
+                                cell_value = work_sheet.cell(
+                                    row=curr_row, column=curr_cell).value
+                                if cell_value == None:
+                                    cell_value = ""
+
+                                cell_value = re.sub(
+                                    "[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value))
+                                sheet_contents = " ".join(
+                                    [sheet_contents, str(cell_value)]).strip()
+                                content_in_row.append(cell_value)
+                            content_in_row = [x for x in content_in_row if x != '']
+                            # print(content_in_row)
+
+                            content_in_string = ' '.join(content_in_row).strip()
+
+                            gotcha = False
+                            for name in self.name_lexical:
+                                
+                                if name in content_in_string:
+                                    if name not in sep_by_name_lexical:
+                                        sep_by_name_lexical[name] = ''
+
+                                    remainStr = content_in_string.replace(name, '')
+                                    if len(remainStr) > 1:
+                                        sep_by_name_lexical[name] = ' '.join([sep_by_name_lexical[name], remainStr]).strip()
+                                        gotcha = True
+
+                            if not gotcha:
+                                if 'unknown' not in sep_by_name_lexical:
+                                    sep_by_name_lexical['unknown'] = ''
+                                if len(content_in_string) > 1:
+                                    sep_by_name_lexical['unknown'] = ' '.join([sep_by_name_lexical['unknown'], content_in_string]).strip()
+
+        
+        for k, v in sep_by_name_lexical.items():
+            # print(k, ':', len(v))
+            # print(k)
+            text_cut = self.thu1.cut(v)  # [(tuple)]
+
+            filted_str = ""
+            for ele in text_cut:
+                if ele[-1] != 'u' and ele[-1] != 'y' and ele[-1] != 'r':
+                    if len(ele[0])>1:
+                        filted_str = " ".join([filted_str, ele[0]])
+            
+            text_cut = filted_str.strip()
+            freq_result = self.count_frequency(text_cut)
+            
+            all_sheets.append((k, freq_result))
+
+
+            # #             # all_sheets.append((sheet_names[i], freq_result))
+            # print(freq_result)
+            # print("------------------------")
+
+
+        self.print_out_result(all_sheets)
 
 
     def list_all(self, dir_path):
@@ -338,8 +526,8 @@ class FileAnalyzer:
 def main():
 
     analyzer = FileAnalyzer()
-    sqlitemanager = SQLiteManager()
-
+    # sqlitemanager = SQLiteManager()
+    # print(sqlitemanager.execute("SELECT * FROM lexical;"))
 
     parser = optparse.OptionParser(usage = "%prog [options] [file_name or folder_name]\n")
 
@@ -379,7 +567,8 @@ def main():
             return -1
         else:
             for i in range(len(args)):
-                analyzer.print_out_result(analyzer.read_single_file(args[i]))
+                # analyzer.print_out_result(analyzer.read_single_file(args[i]))
+                analyzer.read_file_row_by_row(args[i])
                 
     elif options.all_in_directory:
         if len(args) < 1:
