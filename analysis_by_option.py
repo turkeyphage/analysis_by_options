@@ -20,13 +20,16 @@ class FileAnalyzer:
         self.thu1 = thulac.thulac(filt=True)
         self.printFilename = True
         self.sqlMa = SQLiteManager()
-        self.name_lexical = []
-        for ele in self.sqlMa.execute("SELECT * FROM lexical WHERE word_type = 1;"):
+        # self.name_lexical = []
+        self.all_lexical = []
+        # print(self.all_lexical)
+        for ele in self.sqlMa.execute("SELECT * FROM lexical;"):
+            
+            # self.all_lexical.append(ele)
             for ele_in_tuple in ele:
-                self.name_lexical.append(ele_in_tuple[-1])
+                self.all_lexical.append(ele_in_tuple)
 
-        # print(self.name_lexical)
-
+        # print(self.all_lexical)
 
         # self.sqlMa.execute("SELECT * FROM lexical;")
       
@@ -211,10 +214,362 @@ class FileAnalyzer:
 
 
 
+    def parse_row_by_row(self, filepath):
+        
+        filename = os.path.basename(filepath)
+
+        if filename.endswith(".xls") or filename.endswith(".xlsx"):
+            if self.printFilename:
+                print("檔案名稱:", filename)
+
+            if filename.endswith(".xls"): # 使用xlrd
+                filename_without_extension = filename.replace(".xls", "").strip()
+                excelFile = xl.open_workbook(filepath)
+                # 所有sheet的名字
+                sheet_names = excelFile.sheet_names()
+
+                # sheet iteration
+                for i in range(len(sheet_names)):
+                    # sheet
+                    
+                    work_sheet = excelFile.sheet_by_index(i)
+
+                    # 以row數來判斷sheet是否為Empty, 如果empty就不理會
+                    if work_sheet.nrows != 0:
+
+                        #sheet名
+                        sheet_fn = sheet_names[i].strip()
+
+                        num_rows = work_sheet.nrows
+                        num_columns = work_sheet.ncols
+                        
+                        lexicon_table_name = "_".join([filename_without_extension, sheet_fn, "lexicon"])
+                        thulac_table_name = "_".join([filename_without_extension, sheet_fn, "thulac"])
+                        task_table_name = "_".join([filename_without_extension, "task"])
+
+                        sql_query = "CREATE TABLE IF NOT EXISTS %s (keyword TEXT, position TEXT, count INT);" % (lexicon_table_name)
+                        self.sqlMa.execute(sql_query)
+                        sql_query = "CREATE TABLE IF NOT EXISTS %s (keyword TEXT, position TEXT, count INT);" % (thulac_table_name)
+                        self.sqlMa.execute(sql_query)
+
+                        sql_query = "DELETE FROM %s;" % (lexicon_table_name)
+                        self.sqlMa.execute(sql_query)
+                        sql_query = "DELETE FROM %s;" % (thulac_table_name)
+                        self.sqlMa.execute(sql_query)
+
+
+                        #create task table
+                        sql_query = "CREATE TABLE IF NOT EXISTS %s (doc_name TEXT, sheet_name TEXT, task_id INT, task_full_text TEXT, task_status INT, task_start_date TEXT, task_end_date TEXT, task_code TEXT);" % (task_table_name)
+                        self.sqlMa.execute(sql_query)
+                        sql_query = "DELETE FROM %s;" % (task_table_name)
+                        self.sqlMa.execute(sql_query)
+
+                        parsing_result_thulac = dict()
+                        parsing_result_lexicon = dict()
+
+                        for curr_row in range(1, num_rows):
+
+                            doc_name = filename
+                            sheet_name = sheet_fn
+                            task_id = curr_row+1
+                            task_full_text = ""
+                            task_code = ""
+                            task_status = 1
+                            task_start_date = ""
+                            task_end_date = ""
+
+
+                            for curr_cell in range(0, num_columns):
+                                
+                                # Cell Types: 0=Empty, 1=Text, 2=Number, 3=Date, 4=Boolean, 5=Error, 6=Blank
+                                cell_type = work_sheet.cell_type(curr_row, curr_cell)
+                                cell_value = work_sheet.cell_value(curr_row, curr_cell)
+
+                                try:
+                                    if cell_type == 3:
+                                        cell_value = int(cell_value * 24 * 3600)
+                                        cell_value = time(cell_value // 3600, (cell_value % 3600) // 60, cell_value % 60)
+                                except:
+                                    cell_value = ""
+
+                                task_full_text = " ".join([task_full_text, str(cell_value)]).strip().replace("'", "").replace("\"", "")
+
+                                if curr_cell == 0:
+                                    task_code = cell_value
+
+                                if curr_cell == 3:
+                                    task_start_date = cell_value
+                                
+                                if curr_cell == 5:
+                                    task_end_date = cell_value
+
+
+
+
+                                if cell_type != 0 and cell_type != 6 and cell_type != 5:
+                                    cell_value = re.sub("[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value)).upper()
+                                    
+                                    #for lecial search
+                                    for lexicon_tuple in self.all_lexical:
+                                        lexicon = lexicon_tuple[2]
+                                        if lexicon not in parsing_result_lexicon:
+                                            parsing_result_lexicon[lexicon] = {"company_id": lexicon_tuple[0],
+                                                                               "word_type": lexicon_tuple[1],
+                                                                               "appear_position": [],
+                                                                               "count": 0
+                                                                              }
+
+                                        appear_found = [m.start() for m in re.finditer(lexicon, cell_value)]
+
+                                        if len(appear_found) > 0:
+                                            positions = []
+
+                                            for time in range(len(appear_found)):
+                                                positions.append((curr_row+1, curr_cell+1))
+
+                                            origin_position_data = parsing_result_lexicon[lexicon]["appear_position"]
+                                            origin_position_data.extend(positions)
+                                            parsing_result_lexicon[lexicon]["appear_position"] = origin_position_data
+
+                                            origin_count = parsing_result_lexicon[lexicon]["count"]
+                                            origin_count += len(appear_found)
+                                            parsing_result_lexicon[lexicon]["count"] = origin_count
+
+                                    #for thulac search
+                                    text_cut = self.thu1.cut(cell_value)  # [(tuple)]
+                                    filted_cut = []
+                                    for ele in text_cut:
+                                        if ele[-1] != 'u' and ele[-1] != 'y' and ele[-1] != 'r':
+                                            if len(ele[0]) > 1:
+                                                filted_cut.append(ele[0])
+
+                                    if len(filted_cut) > 0:
+                                        for thulacword in filted_cut:
+                                            if thulacword not in parsing_result_thulac:
+                                                parsing_result_thulac[thulacword] = {"appear_position": [],
+                                                                                     "count": 0
+                                                                                    }
+                                            thulacword_appear_found = [m.start() for m in re.finditer(thulacword, cell_value)]
+
+                                            if len(thulacword_appear_found) > 0:
+                                                thepositions = []
+                                                for time in range(len(thulacword_appear_found)):
+                                                    thepositions.append((curr_row+1, curr_cell+1))
+
+                                                origin_position_data = parsing_result_thulac[thulacword]["appear_position"]
+                                                origin_position_data.extend(thepositions)
+                                                parsing_result_thulac[thulacword]["appear_position"] = origin_position_data
+
+                                                origin_count = parsing_result_thulac[thulacword]["count"]
+                                                origin_count += len(thulacword_appear_found)
+                                                parsing_result_thulac[thulacword]["count"] = origin_count
+                                    
+                            sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d, '%s', %d, '%s','%s','%s');" % (task_table_name, doc_name, sheet_name, task_id,  task_full_text, task_status, task_start_date, task_end_date, task_code)
+                            self.sqlMa.execute(sql_query)
+
+                        #write to table
+                        for k, v in parsing_result_lexicon.items():
+                            #k = keyword
+                            #value = dictionary
+                            keyword = k
+                            pos_str = ""
+                            if v["count"]>0:
+                                for pos_tuple in v["appear_position"]:
+                                    # pos = "[" + str(pos_tuple[0]) + "," + str(pos_tuple[-1]) + "]"
+                                    pos = str(pos_tuple[0])
+                                    pos_str = ','.join([pos_str, pos]).strip(',')
+                                count = v["count"]
+                                sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d);" % (lexicon_table_name, k, pos_str, count)
+                                self.sqlMa.execute(sql_query)
+
+                        for k, v in parsing_result_thulac.items():
+                            #k = keyword
+                            #value = dictionary
+                            keyword = k
+                            pos_str = ""
+                            if v["count"] > 0:
+                                for pos_tuple in v["appear_position"]:
+                                    # pos = "[" + str(pos_tuple[0]) + "," + str(pos_tuple[-1]) + "]"
+                                    pos = str(pos_tuple[0])
+                                    pos_str = ','.join([pos_str, pos]).strip(',')
+                                count = v["count"]
+                                sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d);" % (thulac_table_name, k, pos_str, count)
+                                self.sqlMa.execute(sql_query)
+
+
+
+
+            else: # 使用openpyxl
+                filename_without_extension = filename.replace(".xlsx", "").strip()
+                excelFile = pyxl.load_workbook(filepath)
+                #所有sheet的名字
+                sheet_names = excelFile.get_sheet_names()
+
+                #sheet iteration
+                for i in range(len(sheet_names)):
+                    #sheet
+                    work_sheet = excelFile.get_sheet_by_name(sheet_names[i])
+
+                    num_rows = work_sheet.max_row
+                    num_columns = work_sheet.max_column
+
+                    # 以row跟column數來判斷sheet是否為Empty, 如果empty就不理會
+                    if num_columns != 1 and num_rows != 1:
+                        sheet_fn = sheet_names[i].strip()
+                        
+                        lexicon_table_name = "_".join([filename_without_extension, sheet_fn, "lexicon"])
+                        thulac_table_name = "_".join([filename_without_extension, sheet_fn, "thulac"])
+                        task_table_name = "_".join([filename_without_extension, "task"])
+
+
+                        sql_query = "CREATE TABLE IF NOT EXISTS %s (keyword TEXT, position TEXT, count INT);" % (lexicon_table_name)
+                        self.sqlMa.execute(sql_query)
+                        sql_query = "CREATE TABLE IF NOT EXISTS %s (keyword TEXT, position TEXT, count INT);" % (thulac_table_name)
+                        self.sqlMa.execute(sql_query)
+
+                        sql_query = "DELETE FROM %s;" % (lexicon_table_name)
+                        self.sqlMa.execute(sql_query)
+                        sql_query = "DELETE FROM %s;" % (thulac_table_name)
+                        self.sqlMa.execute(sql_query)
+
+
+                        #create task table
+                        sql_query = "CREATE TABLE IF NOT EXISTS %s (doc_name TEXT, sheet_name TEXT, task_id INT, task_full_text TEXT, task_status INT, task_start_date TEXT, task_end_date TEXT, task_code TEXT);" % (task_table_name)
+                        self.sqlMa.execute(sql_query)
+                        sql_query = "DELETE FROM %s;" % (task_table_name)
+                        self.sqlMa.execute(sql_query)
+
+
+                        
+                        parsing_result_thulac = dict()
+                        parsing_result_lexicon = dict()
+                        
+                        for curr_row in range(2, num_rows + 1):  
+
+                            doc_name = filename
+                            sheet_name = sheet_fn
+                            task_id = curr_row
+                            task_full_text = ""
+                            task_code = ""
+                            task_status = 1
+                            task_start_date = ""
+                            task_end_date = ""
+
+                            for curr_cell in range(1, num_columns + 1):
+                                cell_value = work_sheet.cell(row=curr_row, column=curr_cell).value
+
+                                if cell_value == None:
+                                    cell_value = ""
+
+                                task_full_text = " ".join([task_full_text, str(cell_value)]).strip().replace("'", "").replace("\"", "")
+
+                                if curr_cell == 1:
+                                    task_code = cell_value
+
+                                if curr_cell == 4:
+                                    task_start_date = cell_value
+                                
+                                if curr_cell == 6:
+                                    task_end_date = cell_value
+
+
+
+
+                               
+                                cell_value = re.sub("[\s\d，,<>;：（）().；\-:、/.。《》…~\"\\\%$&#*@~`？]+", "", str(cell_value)).upper()
+                                #for lexicon search
+                                for lexicon_tuple in self.all_lexical:
+                                    lexicon = lexicon_tuple[2]
+                                    if lexicon not in parsing_result_lexicon:
+                                        parsing_result_lexicon[lexicon] = {"company_id": lexicon_tuple[0],
+                                                                           "word_type"  : lexicon_tuple[1],
+                                                                           "appear_position" : [],
+                                                                           "count" : 0
+                                                                          }
+                                    
+                                    appear_found = [m.start() for m in re.finditer(lexicon, cell_value)]
+                                    if len(appear_found) > 0:
+                                        positions = []
+                                        for time in range(len(appear_found)):
+                                            positions.append((curr_row, curr_cell))
+                                        
+                                        origin_position_data = parsing_result_lexicon[lexicon]["appear_position"]
+                                        origin_position_data.extend(positions)
+                                        parsing_result_lexicon[lexicon]["appear_position"] = origin_position_data
+                                        
+                                        origin_count = parsing_result_lexicon[lexicon]["count"]
+                                        origin_count += len(appear_found)
+                                        parsing_result_lexicon[lexicon]["count"] = origin_count
+                            
+                                #for thulac search
+                                text_cut = self.thu1.cut(cell_value)  # [(tuple)]
+                                filted_cut = []
+                                for ele in text_cut:
+                                    if ele[-1] != 'u' and ele[-1] != 'y' and ele[-1] != 'r':
+                                        if len(ele[0]) > 1:
+                                            filted_cut.append(ele[0])
+                                
+                                if len(filted_cut) > 0:
+                                    for thulacword in filted_cut:
+                                        if thulacword not in parsing_result_thulac:
+                                            parsing_result_thulac[thulacword] = { "appear_position": [],
+                                                                                  "count": 0
+                                                                                }
+                                        thulacword_appear_found = [ m.start() for m in re.finditer(thulacword, cell_value)]
+                                        if len(thulacword_appear_found) > 0:
+                                            thepositions = []
+                                            for time in range(len(thulacword_appear_found)):
+                                                thepositions.append((curr_row, curr_cell))
+
+                                            origin_position_data = parsing_result_thulac[thulacword]["appear_position"]
+                                            origin_position_data.extend(thepositions)
+                                            parsing_result_thulac[thulacword]["appear_position"] = origin_position_data
+
+                                            origin_count = parsing_result_thulac[thulacword]["count"]
+                                            origin_count += len(thulacword_appear_found)
+                                            parsing_result_thulac[thulacword]["count"] = origin_count
+                                
+                            
+                            sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d, '%s', %d, '%s','%s','%s');" % (task_table_name, doc_name, sheet_name, task_id,  task_full_text , task_status, task_start_date, task_end_date, task_code)
+                            self.sqlMa.execute(sql_query)
+                        
+
+                        #write to table
+                        for k, v in parsing_result_lexicon.items():
+                            #k = keyword
+                            #value = dictionary
+                            keyword = k
+                            pos_str = ""
+                            if v["count"]>0:
+                                for pos_tuple in v["appear_position"]:
+                                    # pos = "[" + str(pos_tuple[0]) + "," + str(pos_tuple[-1]) + "]"
+                                    pos = str(pos_tuple[0])
+                                    pos_str = ','.join([pos_str, pos]).strip(',')
+                                count = v["count"]
+                                sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d);" % (lexicon_table_name, k, pos_str, count)
+                                self.sqlMa.execute(sql_query)
+
+                        for k, v in parsing_result_thulac.items():
+                            #k = keyword
+                            #value = dictionary
+                            keyword = k
+                            pos_str = ""
+                            if v["count"] > 0:
+                                for pos_tuple in v["appear_position"]:
+                                    # pos = "[" + str(pos_tuple[0]) + "," + str(pos_tuple[-1]) + "]"
+                                    pos = str(pos_tuple[0])
+                                    pos_str = ','.join([pos_str, pos]).strip(',')
+                                count = v["count"]
+                                sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d);" % (thulac_table_name, k, pos_str, count)
+                                self.sqlMa.execute(sql_query)
+
+                        
+                        
 
 
 
     def read_file_row_by_row(self, filepath):
+
         all_sheets = []
 
         sep_by_name_lexical = dict()
@@ -568,8 +923,12 @@ def main():
         else:
             for i in range(len(args)):
                 # analyzer.print_out_result(analyzer.read_single_file(args[i]))
-                analyzer.read_file_row_by_row(args[i])
+                analyzer.parse_row_by_row(args[i])
                 
+
+
+
+
     elif options.all_in_directory:
         if len(args) < 1:
             print("not enough args")
@@ -579,6 +938,10 @@ def main():
             for i in range(len(args)):
                analyzer.go_through_directory(args[i])
                 
+
+
+
+
 
     elif options.combined_Files:
         analyzer.printFilename = False
