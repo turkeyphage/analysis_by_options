@@ -292,7 +292,7 @@ class FileAnalyzer:
                                 except:
                                     cell_value = ""
 
-                                task_full_text = " ".join([task_full_text, str(cell_value)]).strip().replace("'", "").replace("\"", "")
+                                task_full_text = " ".join([task_full_text, str(cell_value)]).strip().replace("'", "").replace("\"", "").upper()
 
                                 if curr_cell == 0:
                                     task_code = cell_value
@@ -461,7 +461,7 @@ class FileAnalyzer:
                                 if cell_value == None:
                                     cell_value = ""
 
-                                task_full_text = " ".join([task_full_text, str(cell_value)]).strip().replace("'", "").replace("\"", "")
+                                task_full_text = " ".join([task_full_text, str(cell_value)]).strip().replace("'", "").replace("\"", "").upper()
 
                                 if curr_cell == 1:
                                     task_code = cell_value
@@ -924,6 +924,7 @@ def main():
             for i in range(len(args)):
                 # analyzer.print_out_result(analyzer.read_single_file(args[i]))
                 analyzer.parse_row_by_row(args[i])
+            print("分析完畢，已將分析結果存入lexicon.db中")
                 
 
 
