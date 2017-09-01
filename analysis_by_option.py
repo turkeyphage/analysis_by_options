@@ -22,16 +22,15 @@ class FileAnalyzer:
         self.sqlMa = SQLiteManager()
         # self.name_lexical = []
         self.all_lexical = []
+        self.currFile = ""
+        self.currSheet = ""
         # print(self.all_lexical)
-        for ele in self.sqlMa.execute("SELECT * FROM lexical;"):
-            
+        for ele in self.sqlMa.execute("SELECT * FROM lexical;"):            
             # self.all_lexical.append(ele)
             for ele_in_tuple in ele:
                 self.all_lexical.append(ele_in_tuple)
 
-        # print(self.all_lexical)
 
-        # self.sqlMa.execute("SELECT * FROM lexical;")
       
     def creation_date(self, path_to_file):
 
@@ -224,6 +223,8 @@ class FileAnalyzer:
 
             if filename.endswith(".xls"): # 使用xlrd
                 filename_without_extension = filename.replace(".xls", "").strip()
+                self.currFile = filename_without_extension
+
                 excelFile = xl.open_workbook(filepath)
                 # 所有sheet的名字
                 sheet_names = excelFile.sheet_names()
@@ -239,6 +240,7 @@ class FileAnalyzer:
 
                         #sheet名
                         sheet_fn = sheet_names[i].strip()
+                        self.currSheet = sheet_fn
 
                         num_rows = work_sheet.nrows
                         num_columns = work_sheet.ncols
@@ -401,6 +403,8 @@ class FileAnalyzer:
 
             else: # 使用openpyxl
                 filename_without_extension = filename.replace(".xlsx", "").strip()
+                self.currFile = filename_without_extension
+
                 excelFile = pyxl.load_workbook(filepath)
                 #所有sheet的名字
                 sheet_names = excelFile.get_sheet_names()
@@ -416,6 +420,7 @@ class FileAnalyzer:
                     # 以row跟column數來判斷sheet是否為Empty, 如果empty就不理會
                     if num_columns != 1 and num_rows != 1:
                         sheet_fn = sheet_names[i].strip()
+                        self.currSheet = sheet_fn
                         
                         lexicon_table_name = "_".join([filename_without_extension, sheet_fn, "lexicon"])
                         thulac_table_name = "_".join([filename_without_extension, sheet_fn, "thulac"])
