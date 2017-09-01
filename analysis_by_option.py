@@ -10,30 +10,36 @@ import time
 import platform
 import datetime
 from datetime import time
-import thulac
+
 import optparse
 import collections
+
+import thulac
+import jieba
+import jieba.posseg as pseg
+
 from sqlite_manager import SQLiteManager
+
 
 class FileAnalyzer:
     def __init__(self):
-        self.thu1 = thulac.thulac(filt=True)
-        self.printFilename = True
+        # self.thu1 = thulac.thulac(filt=True)
+        # self.printFilename = True
         self.sqlMa = SQLiteManager()
         # self.name_lexical = []
-        self.all_lexical = []
-        self.currFile = ""
-        self.currSheet = ""
+        # self.all_lexical = []
+        # self.currFile = ""
+        # self.currSheet = ""
+
         # print(self.all_lexical)
-        for ele in self.sqlMa.execute("SELECT * FROM lexical;"):            
-            # self.all_lexical.append(ele)
-            for ele_in_tuple in ele:
-                self.all_lexical.append(ele_in_tuple)
+        # for ele in self.sqlMa.execute("SELECT * FROM lexical;"):            
+        #     # self.all_lexical.append(ele)
+        #     for ele_in_tuple in ele:
+        #         self.all_lexical.append(ele_in_tuple)
 
 
-      
+    #查metadata建立日期
     def creation_date(self, path_to_file):
-
         if platform.system() == 'Windows':
             return os.path.getctime(path_to_file)
         else:
@@ -54,6 +60,184 @@ class FileAnalyzer:
                 return "-".join([str(year), str(month), str(day)])
 
 
+    
+
+
+
+    def parse_excel_file(self, filepath):
+        def create_task_table(task_table_name):
+                sql_query = "CREATE TABLE IF NOT EXISTS %s (doc_name TEXT, sheet_name TEXT, task_id INT, employee_name TEXT, task_start_date TEXT, task_start_time TEXT, task_end_date TEXT, task_end_time TEXT, task_code TEXT, task_type_name TEXT, task_category_name TEXT, task_desc TEXT, text_full_content TEXT);" % (task_table_name)
+                self.sqlMa.execute(sql_query)
+                sql_query = "DELETE FROM %s;" % (task_table_name)
+                self.sqlMa.execute(sql_query)
+
+        def insert_task_table(task_table_name, valueList):
+                sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s');" % (
+                    task_table_name, valueList[0], valueList[1], valueList[2], valueList[3], valueList[4], valueList[5], valueList[6], valueList[7], valueList[8], valueList[9], valueList[10], valueList[11], valueList[12])
+                self.sqlMa.execute(sql_query)
+
+
+        filename = os.path.basename(filepath)
+        if filename.endswith(".xls") or filename.endswith(".xlsx"):
+
+            # 使用xlrd
+            if filename.endswith(".xls"): 
+                filename_without_extension = filename.replace(".xls", "").strip()
+                task_table_name = "_".join(["task", filename_without_extension])
+                create_task_table(task_table_name)
+                
+                excelFile = xl.open_workbook(filepath)
+                sheet_names = excelFile.sheet_names()  # 所有sheet的名字
+                
+                # sheet iteration
+                for i in range(len(sheet_names)):
+                    current_sheet = excelFile.sheet_by_index(i)
+                    num_rows = current_sheet.nrows
+                    num_columns = current_sheet.ncols
+                    # 以row數來判斷sheet是否為Empty, 如果empty就不理會
+                    if num_rows != 0:
+                        curr_sheetname = sheet_names[i].strip()  # sheet名
+                        #xlrd的row/column從0開始算
+                        for curr_row in range(1, num_rows):
+
+                            doc_name = filename
+                            sheet_name = curr_sheetname
+                            task_id = curr_row
+                            employee_name = ""
+                            task_start_date = ""
+                            task_start_time = ""
+                            task_end_date = ""
+                            task_end_time = ""
+                            task_code = ""
+                            task_type_name = ""
+                            task_category_name = ""
+                            task_desc = ""
+                            text_full_content = ""
+
+
+                            for curr_column in range(0, num_columns):
+                                # Cell Types: 0=Empty, 1=Text, 2=Number, 3=Date, 4=Boolean, 5=Error, 6=Blank
+                                cell_type = current_sheet.cell_type(curr_row, curr_column)
+                                cell_value = current_sheet.cell_value(curr_row, curr_column)
+
+                                try:
+                                    if cell_type == 3:
+                                        cell_value = int(
+                                            cell_value * 24 * 3600)
+                                        cell_value = time(
+                                            cell_value // 3600, (cell_value % 3600) // 60, cell_value % 60)
+                                except:
+                                    cell_value = ""
+
+                                if curr_column == 0:
+                                    task_code = cell_value
+                                if curr_column == 2:
+                                    employee_name = cell_value
+                                if curr_column == 3:
+                                    task_start_date = cell_value
+                                if curr_column == 4:
+                                    task_start_time = cell_value
+                                if curr_column == 5:
+                                    task_end_date = cell_value
+                                if curr_column == 6:
+                                    task_end_time = cell_value
+                                if curr_column == 9:
+                                    task_type_name = cell_value
+                                if curr_column == 11:
+                                    task_category_name = cell_value.strip().replace(
+                                        "'", "").replace("\"", "").upper()
+                                if curr_column == 12:
+                                    task_desc = cell_value.strip().replace("'", "").replace("\"", "").upper()
+
+                                text_full_content = " ".join([text_full_content, str(cell_value)]).strip().replace("'", "").replace("\"", "").upper()
+
+                            insert_task_table(task_table_name, [doc_name, sheet_name, task_id, employee_name, task_start_date, task_start_time,
+                                                                task_end_date, task_end_time, task_code, task_type_name, task_category_name, task_desc, text_full_content])
+
+
+
+            # 使用openpyxl
+            else: 
+                filename_without_extension = filename.replace(".xlsx", "").strip()
+                task_table_name = "_".join(["task", filename_without_extension])
+                create_task_table(task_table_name)
+                excelFile = pyxl.load_workbook(filepath)
+                sheet_names = excelFile.get_sheet_names()  # 所有sheet的名字
+
+
+                #sheet iteration
+                for i in range(len(sheet_names)):
+                    current_sheet = excelFile.get_sheet_by_name(sheet_names[i])
+                    num_rows = current_sheet.max_row
+                    num_columns = current_sheet.max_column
+
+                    # 以row跟column數來判斷sheet是否為Empty, 如果empty就不理會
+                    if num_columns != 1 and num_rows != 1:
+                        curr_sheetname = sheet_names[i].strip() #sheet名
+                        #openpyxl的row/column從1開始算
+                        for curr_row in range(2, num_rows + 1):
+
+                            # doc_name TEXT, 
+                            # sheet_name TEXT, 
+                            # task_id INT, 
+                            # employee_name TEXT, 
+                            # task_start_date TEXT, 
+                            # task_start_time TEXT, 
+                            # task_end_date TEXT, 
+                            # task_end_time TEXT, 
+                            # task_code TEXT, 
+                            # task_type_name TEXT, 
+                            # task_category_name TEXT, 
+                            # task_desc TEXT, 
+                            # text_full_content TEXT
+                            
+                            doc_name = filename
+                            sheet_name = curr_sheetname
+                            task_id = curr_row
+                            employee_name = ""
+                            task_start_date = ""
+                            task_start_time = ""
+                            task_end_date = ""
+                            task_end_time = ""
+                            task_code = ""
+                            task_type_name = ""
+                            task_category_name = ""
+                            task_desc = ""
+                            text_full_content = ""
+
+                            for curr_column in range(1, num_columns + 1):
+                                
+                                cell_value = current_sheet.cell(row=curr_row, column=curr_column).value
+
+                                if cell_value == None:
+                                    cell_value = ""
+                                
+                                if curr_column == 1:
+                                    task_code = cell_value
+                                if curr_column == 3:
+                                    employee_name = cell_value
+                                if curr_column == 4:
+                                    task_start_date = cell_value
+                                if curr_column == 5:
+                                    task_start_time = cell_value
+                                if curr_column == 6:
+                                    task_end_date = cell_value
+                                if curr_column == 7:
+                                    task_end_time = cell_value
+                                if curr_column == 10:
+                                    task_type_name = cell_value
+                                if curr_column == 12:
+                                    task_category_name = cell_value.strip().replace("'", "").replace("\"", "").upper()
+                                if curr_column == 13:
+                                    task_desc = cell_value.strip().replace("'", "").replace("\"", "").upper()
+
+                                text_full_content = " ".join([text_full_content, str(cell_value)]).strip().replace("'", "").replace("\"", "").upper()
+
+                            insert_task_table(task_table_name, [doc_name, sheet_name, task_id, employee_name, task_start_date, task_start_time, task_end_date, task_end_time, task_code, task_type_name, task_category_name, task_desc, text_full_content])
+
+
+
+    """
     def count_frequency(self, full_text):
 
         split_text = full_text.split(" ")
@@ -212,7 +396,10 @@ class FileAnalyzer:
         return all_sheets  # [(2 items tuple)]
 
 
+    """
 
+    """    
+    #舊版本
     def parse_row_by_row(self, filepath):
         
         filename = os.path.basename(filepath)
@@ -567,12 +754,12 @@ class FileAnalyzer:
                                 count = v["count"]
                                 sql_query = "INSERT INTO %s VALUES ('%s', '%s', %d);" % (thulac_table_name, k, pos_str, count)
                                 self.sqlMa.execute(sql_query)
-
+    """
                         
                         
 
 
-
+    """
     def read_file_row_by_row(self, filepath):
 
         all_sheets = []
@@ -878,18 +1065,18 @@ class FileAnalyzer:
                 # print(src)
                 self.print_out_result(self.read_single_file(src))
 
-
+    """
 
     
+
 
 
 def main():
 
     analyzer = FileAnalyzer()
-    # sqlitemanager = SQLiteManager()
-    # print(sqlitemanager.execute("SELECT * FROM lexical;"))
 
-    parser = optparse.OptionParser(usage = "%prog [options] [file_name or folder_name]\n")
+    # parser = optparse.OptionParser(usage = "%prog [options] [file_name or folder_name]\n")
+    parser = optparse.OptionParser(usage = "%prog [options] [file_name]\n")
 
     parser.add_option("-f", "--file",
                       action="store_true",
@@ -897,6 +1084,7 @@ def main():
                       dest="single_file",
                       help="分析單獨excel檔")
 
+    """
     parser.add_option("-d", "--directory",
                       action="store_true",
                       default=False,
@@ -915,11 +1103,10 @@ def main():
                       dest="combined_Files",
                       help="綜合分析指定excel檔")
 
+    """
 
     (options, args) = parser.parse_args()
 
-    
-        
     if options.single_file:
         if len(args) < 1:
             print("not enough args")
@@ -928,12 +1115,14 @@ def main():
         else:
             for i in range(len(args)):
                 # analyzer.print_out_result(analyzer.read_single_file(args[i]))
-                analyzer.parse_row_by_row(args[i])
-            print("分析完畢，已將分析結果存入lexicon.db中")
+                # analyzer.parse_row_by_row(args[i])
+                analyzer.parse_excel_file(args[i])
+            # print("分析完畢，已將分析結果存入lexicon.db中")
                 
+    else:
+        parser.print_help()
 
-
-
+    """
 
     elif options.all_in_directory:
         if len(args) < 1:
@@ -999,9 +1188,8 @@ def main():
         else:
             for i in range(len(args)):
                 analyzer.list_all(args[i])
-
-    else:
-        parser.print_help()
+    """
+    
 
         
 if __name__ == "__main__":
