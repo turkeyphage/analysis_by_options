@@ -1,9 +1,10 @@
 import jieba
 import jieba.posseg as pseg
+from sqlite_manager import SQLiteManager
 
-
-class Tokenizer:
+class Tokenizer(SQLiteManager):
     def __init__(self):
+        super().__init__()
         jieba.set_dictionary('./extra_dict/dict.txt.big')
         jieba.load_userdict('lexicon_dict.text')
 
@@ -16,6 +17,7 @@ class Tokenizer:
             else:
                 pass
         return "".join(newStrList)
+
 
     def cut_with_speech_part(self, origin_string):
         origin_string = self.replace_nonChinese(origin_string)

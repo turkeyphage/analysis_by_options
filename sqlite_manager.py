@@ -7,8 +7,6 @@ class SQLiteManager(object):
     def __init__(self, database='lexicon.db', statements=None):
         
         #初始化sqlite DB
-
-
         #db_filename
         self.database = database
 
