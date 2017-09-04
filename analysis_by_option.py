@@ -1,11 +1,14 @@
 #!/Library/Frameworks/Python.framework/Versions/3.5/bin/python3
 from fileAnalyzer import FileAnalyzer
+from tokenizer import Tokenizer
+from summerize import Summerize
 import optparse
 
 
 def main():
-    analyzer = FileAnalyzer()
-
+    theAnalyzer = FileAnalyzer()
+    theTokenizer = Tokenizer()
+    theSummerizer = Summerize()
     # parser = optparse.OptionParser(usage = "%prog [options] [file_name or folder_name]\n")
     parser = optparse.OptionParser(usage = "%prog [options] [file_name]\n")
 
@@ -44,12 +47,16 @@ def main():
             parser.print_help()
             return -1
         else:
+            
             for i in range(len(args)):
                 # analyzer.print_out_result(analyzer.read_single_file(args[i]))
                 # analyzer.parse_row_by_row(args[i])
-                analyzer.parse_excel_file(args[i])
-            # print("分析完畢，已將分析結果存入lexicon.db中")
-                
+                theAnalyzer.parse_excel_file(args[i])
+            
+            theTokenizer.cut_and_save_2_sqlite()
+            
+            theSummerizer.list_same_values()
+            print("分析完畢，已將分析結果存入lexicon.db中的表analysis_result")
     else:
         parser.print_help()
 
@@ -64,11 +71,6 @@ def main():
             for i in range(len(args)):
                analyzer.go_through_directory(args[i])
                 
-
-
-
-
-
     elif options.combined_Files:
         analyzer.printFilename = False
         all_data = dict()
